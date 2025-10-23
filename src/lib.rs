@@ -14,7 +14,7 @@ use std::{
 use fancy_regex::Regex;
 use num_integer::Integer;
 use sequoia_openpgp::{
-    Cert, Packet,
+    Cert, Packet, armor,
     crypto::Password,
     packet::{
         Key,
@@ -117,15 +117,14 @@ impl Fingerprunk {
         let mut stdout = io::stdout().lock();
 
         for key in matches_rx {
-            let result = self
+            let cert = self
                 .key_to_cert(&key)
-                .and_then(|cert| cert.as_tsk().armored().serialize(&mut stdout));
+                .expect("should be able to create certificate");
 
-            if let Err(err) = result {
-                eprintln!("Error: {err}");
-            } else {
-                self.counter_found.fetch_add(1, Ordering::Relaxed);
-            }
+            self.serialize_cert(cert, &mut stdout)
+                .expect("should be able to serialize certificate");
+
+            self.counter_found.fetch_add(1, Ordering::Relaxed);
         }
     }
 
@@ -155,6 +154,29 @@ impl Fingerprunk {
         });
 
         Cert::try_from(vec![secret_key_packet, Packet::from(sig)])
+    }
+
+    fn serialize_cert(&self, cert: Cert, to: impl io::Write) -> anyhow::Result<()> {
+        let mut comments = cert.armor_headers();
+        comments.push(format!(
+            "Generated with Fingerprunk. Regex: {}",
+            self.config.regex
+        ));
+
+        let headers: Vec<_> = comments
+            .into_iter()
+            .map(|s| ("Comment".to_string(), s))
+            .collect();
+
+        let mut writer = armor::Writer::with_headers(to, armor::Kind::SecretKey, headers)?;
+
+        // Set the profile to RFC4880 because we generate v4 keys.
+        writer.set_profile(sequoia_openpgp::Profile::RFC4880)?;
+
+        cert.serialize(&mut writer)?;
+        writer.finalize()?;
+
+        Ok(())
     }
 
     fn status_displayer_thread(&self) {
