@@ -13,8 +13,9 @@ cargo install fingerprunk
 
 ## Usage
 
-Let's say you want to find keys whose fingerprints begin with `C0FFEE` and store them `secret.asc`.
-The regex for this is `^C0FFEE`. Now, simply use the following command to start the search:
+Let's say you want to find keys whose fingerprints begin with `C0FFEE` and store them
+at `secret.asc`. The regex for this is `^C0FFEE`. Now, simply use the following command to start
+the search:
 
 ```sh
 fingerprunk -r '^C0FFEE' >> secret.asc
@@ -49,7 +50,7 @@ Also see <https://en.wikipedia.org/wiki/Hexspeak> for some further examples of "
 
 ### How long does it take?
 
-On my machine with an AMD Ryzen 7 5800X Processor, Fingerprunk is able to generate and check about
+On my machine with an AMD Ryzen 7 5800X processor, Fingerprunk is able to generate and check about
 43300 keys per second. This means that for finding a fingerprint with a string of *n* specific
 hexadecimal digits at a specific place, I could expect the following runtimes until finding the
 first key:
