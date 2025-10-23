@@ -22,7 +22,7 @@ use sequoia_openpgp::{
         prelude::SignatureBuilder,
     },
     serialize::Serialize,
-    types::{HashAlgorithm, SignatureType, SymmetricAlgorithm},
+    types::{Curve, HashAlgorithm, SignatureType, SymmetricAlgorithm},
 };
 
 type SecretKey = Key<SecretParts, PrimaryRole>;
@@ -92,7 +92,8 @@ impl Fingerprunk {
         let mut fingerprint_hex = String::with_capacity(20 * 2);
 
         loop {
-            let key = Key4::generate_ed25519().expect("should be able to generate key");
+            let key =
+                Key4::generate_ecc(true, Curve::Ed25519).expect("should be able to generate key");
             fingerprint_hex.clear();
             write!(fingerprint_hex, "{:X}", key.fingerprint())
                 .expect("should write into string without error");
