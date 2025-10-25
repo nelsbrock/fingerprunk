@@ -1,6 +1,6 @@
 [package]
 name = "fingerprunk"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Niklas Elsbrock <mail@nelsbrock.de>"]
 edition = "2024"
 description = "CLI tool for brute-forcing OpenPGP keys with cool fingerprints"
