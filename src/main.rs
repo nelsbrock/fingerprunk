@@ -1,4 +1,7 @@
-use std::io::{self, IsTerminal};
+use std::{
+    io::{self, IsTerminal},
+    num::NonZeroU64,
+};
 
 use anyhow::{Context as AnyhowContext, anyhow};
 use clap::{ArgAction, Parser, ValueEnum};
@@ -25,6 +28,10 @@ struct Args {
     /// to stdin) from being "overwritten" by status information printed to stderr.
     #[arg(long, value_enum, default_value_t)]
     status: StatusEnabled,
+
+    /// Stop once the specified number of matching keys has been found.
+    #[arg(long)]
+    stop_after: Option<NonZeroU64>,
 
     /// Prompt for a password and use it to encrypt found keys.
     ///
@@ -78,6 +85,7 @@ fn main() -> anyhow::Result<()> {
     let config = fingerprunk::Config {
         regex: args.regex,
         status_enabled: args.status.evaluate(),
+        stop_after: args.stop_after,
         password,
     };
 

@@ -2,10 +2,11 @@
 
 use std::{
     fmt::{self, Write},
-    io::{self},
+    io,
+    num::NonZeroU64,
     sync::{
-        atomic::{AtomicU64, Ordering},
-        mpsc::{self, Receiver},
+        atomic::{AtomicBool, AtomicU64, Ordering},
+        mpsc,
     },
     thread,
     time::{Duration, Instant},
@@ -31,12 +32,15 @@ type SecretKey = Key<SecretParts, PrimaryRole>;
 pub struct Config {
     pub regex: Regex,
     pub status_enabled: bool,
+    pub stop_after: Option<NonZeroU64>,
     pub password: Option<Password>,
 }
 
 #[derive(Debug)]
 pub struct Fingerprunk {
     config: Config,
+    started_instant: Instant,
+    stop: AtomicBool,
     counter_tried: AtomicU64,
     counter_found: AtomicU64,
 }
@@ -52,12 +56,16 @@ impl Fingerprunk {
     pub fn new_from_config(config: Config) -> Self {
         Self {
             config,
+            started_instant: Instant::now(),
+            stop: AtomicBool::new(false),
             counter_tried: AtomicU64::new(0),
             counter_found: AtomicU64::new(0),
         }
     }
 
-    pub fn run(self) {
+    pub fn run(mut self) {
+        self.started_instant = Instant::now();
+
         let (tx, rx) = mpsc::channel();
 
         thread::scope(|scope| {
@@ -65,12 +73,16 @@ impl Fingerprunk {
 
             let ref_self = &self;
 
-            if self.config.status_enabled {
-                thread::Builder::new()
-                    .name("status_displayer".to_string())
-                    .spawn_scoped(scope, move || ref_self.status_displayer_thread())
-                    .expect(THREAD_SPAWN_EXPECT_MSG);
-            }
+            let status_displayer = if self.config.status_enabled {
+                Some(
+                    thread::Builder::new()
+                        .name("status_displayer".to_string())
+                        .spawn_scoped(scope, move || ref_self.status_displayer_thread())
+                        .expect(THREAD_SPAWN_EXPECT_MSG),
+                )
+            } else {
+                None
+            };
 
             for num in 0..num_cpus::get() {
                 let tx = tx.clone();
@@ -81,9 +93,19 @@ impl Fingerprunk {
                     .expect(THREAD_SPAWN_EXPECT_MSG);
             }
 
+            let on_stop = || {
+                // Ask all other threads to stop
+                self.stop.store(true, Ordering::Relaxed);
+
+                // Unpark the status displayer thread
+                if let Some(status_displayer) = status_displayer {
+                    status_displayer.thread().unpark();
+                }
+            };
+
             thread::Builder::new()
                 .name("finalizer".to_string())
-                .spawn_scoped(scope, move || ref_self.finalizer_thread(rx))
+                .spawn_scoped(scope, move || ref_self.finalizer_thread(rx, on_stop))
                 .expect(THREAD_SPAWN_EXPECT_MSG);
         });
     }
@@ -91,7 +113,7 @@ impl Fingerprunk {
     fn worker_thread(&self, matches_tx: mpsc::Sender<SecretKey>) {
         let mut fingerprint_hex = String::with_capacity(20 * 2);
 
-        loop {
+        while !self.stop.load(Ordering::Relaxed) {
             let key =
                 Key4::generate_ecc(true, Curve::Ed25519).expect("should be able to generate key");
             fingerprint_hex.clear();
@@ -114,7 +136,7 @@ impl Fingerprunk {
             .expect("should check regex without error")
     }
 
-    fn finalizer_thread(&self, matches_rx: Receiver<SecretKey>) {
+    fn finalizer_thread(&self, matches_rx: mpsc::Receiver<SecretKey>, on_stop: impl FnOnce()) {
         let mut stdout = io::stdout().lock();
 
         for key in matches_rx {
@@ -125,8 +147,14 @@ impl Fingerprunk {
             self.serialize_cert(cert, &mut stdout)
                 .expect("should be able to serialize certificate");
 
-            self.counter_found.fetch_add(1, Ordering::Relaxed);
+            let prev = self.counter_found.fetch_add(1, Ordering::Relaxed);
+
+            if self.config.stop_after.is_some_and(|s| prev + 1 == s.get()) {
+                break;
+            }
         }
+
+        on_stop();
     }
 
     fn key_to_cert(&self, key: &SecretKey) -> anyhow::Result<Cert> {
@@ -181,6 +209,21 @@ impl Fingerprunk {
     }
 
     fn status_displayer_thread(&self) {
+        const UPDATE_INTERVAL: Duration = Duration::from_millis(250);
+
+        eprint!("\n\n\n\n\n");
+
+        while !self.stop.load(Ordering::Relaxed) {
+            self.print_status();
+            // We are parking the thread instead of sleeping so we can unpark it when we want to
+            // stop the program.
+            thread::park_timeout(UPDATE_INTERVAL);
+        }
+
+        self.print_status();
+    }
+
+    fn print_status(&self) {
         struct DurationDhms(Duration);
 
         impl fmt::Display for DurationDhms {
@@ -194,28 +237,20 @@ impl Fingerprunk {
             }
         }
 
-        const UPDATE_INTERVAL: Duration = Duration::from_millis(250);
         const FORMAT_WIDTH: usize = 12;
 
-        let start = Instant::now();
-
-        eprint!("\n\n\n\n\n");
-
-        loop {
-            let duration = DurationDhms(start.elapsed());
-            let keys = self.counter_tried.load(Ordering::Relaxed);
-            let keys_per_sec = keys as f64 / duration.0.as_secs_f64();
-            let found = self.counter_found.load(Ordering::Relaxed);
-            eprint!(
-                "\x1b[F\x1b[F\x1b[F\x1b[F\x1b[F\
+        let duration = DurationDhms(self.started_instant.elapsed());
+        let keys = self.counter_tried.load(Ordering::Relaxed);
+        let keys_per_sec = keys as f64 / duration.0.as_secs_f64();
+        let found = self.counter_found.load(Ordering::Relaxed);
+        eprint!(
+            "\x1b[F\x1b[F\x1b[F\x1b[F\x1b[F\
                 Time:  {duration}\n\
                 Tried: {keys: >w$} keys\n\
                 Rate:  {keys_per_sec: >w$.0} keys/s\n\
                 ---\n\
                 Found: {found: >w$} keys\n",
-                w = FORMAT_WIDTH
-            );
-            thread::sleep(UPDATE_INTERVAL);
-        }
+            w = FORMAT_WIDTH
+        );
     }
 }
