@@ -51,7 +51,7 @@ Also see <https://en.wikipedia.org/wiki/Hexspeak> for some further examples of "
 ### How long does it take?
 
 On my machine with an AMD Ryzen 7 5800X processor, Fingerprunk is able to generate and check about
-41000 keys per second. This means that for finding a fingerprint with a string of *n* specific
+43500 keys per second. This means that for finding a fingerprint with a string of *n* specific
 hexadecimal digits at a specific place, I could expect the following runtimes until finding the
 first key:
 
@@ -60,15 +60,15 @@ first key:
 |   1 |              16 =  16¹ |    < 0.1 secs |
 |   2 |             256 =  16² |    < 0.1 secs |
 |   3 |            4096 =  16³ |      0.1 secs |
-|   4 |           65536 =  16⁴ |      1.6 secs |
-|   5 |         1048576 =  16⁵ |       26 secs |
-|   6 |        16777216 =  16⁶ |        7 mins |
+|   4 |           65536 =  16⁴ |      1.5 secs |
+|   5 |         1048576 =  16⁵ |       24 secs |
+|   6 |        16777216 =  16⁶ |        6 mins |
 |   7 |       268435456 =  16⁷ |       2 hours |
 |   8 |      4294967296 =  16⁸ |        1 days |
-|   9 |     68719476736 =  16⁹ |       19 days |
-|  10 |   1099511627776 = 16¹⁰ |      310 days |
-|  11 |  17592186044416 = 16¹¹ |      14 years |
-|  12 | 281474976710656 = 16¹² |     218 years |
+|   9 |     68719476736 =  16⁹ |       18 days |
+|  10 |   1099511627776 = 16¹⁰ |      293 days |
+|  11 |  17592186044416 = 16¹¹ |      13 years |
+|  12 | 281474976710656 = 16¹² |     205 years |
 
 As you can see, anything above 10 fixed digits is pretty much unfeasible, at least with a normal
 personal computer.
