@@ -89,7 +89,7 @@ fn main() -> anyhow::Result<()> {
         password,
     };
 
-    Fingerprunk::new_from_config(config).run();
+    Fingerprunk::new_from_config(config).run()?;
 
     Ok(())
 }

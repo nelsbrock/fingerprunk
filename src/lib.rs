@@ -28,6 +28,12 @@ use sequoia_openpgp::{
 
 type SecretKey = Key<SecretParts, PrimaryRole>;
 
+#[allow(clippy::large_enum_variant)]
+enum Message {
+    Key(SecretKey),
+    Stop,
+}
+
 #[derive(Clone, Debug)]
 pub struct Config {
     pub regex: Regex,
@@ -63,54 +69,71 @@ impl Fingerprunk {
         }
     }
 
-    pub fn run(mut self) {
+    pub fn run(mut self) -> anyhow::Result<()> {
         self.started_instant = Instant::now();
 
-        let (tx, rx) = mpsc::channel();
+        let (sender, receiver) = mpsc::channel();
+
+        {
+            let sender = sender.clone();
+            ctrlc::set_handler(move || {
+                let _ = sender.send(Message::Stop);
+            })?;
+        }
 
         thread::scope(|scope| {
-            const THREAD_SPAWN_EXPECT_MSG: &str = "should be able to spawn thread";
-
             let ref_self = &self;
 
             let status_displayer = if self.config.status_enabled {
                 Some(
                     thread::Builder::new()
                         .name("status_displayer".to_string())
-                        .spawn_scoped(scope, move || ref_self.status_displayer_thread())
-                        .expect(THREAD_SPAWN_EXPECT_MSG),
+                        .spawn_scoped(scope, move || ref_self.status_displayer_thread())?,
                 )
             } else {
                 None
             };
 
             for num in 0..num_cpus::get() {
-                let tx = tx.clone();
+                let sender = sender.clone();
 
                 thread::Builder::new()
                     .name(format!("worker-{num:03}"))
-                    .spawn_scoped(scope, move || ref_self.worker_thread(tx))
-                    .expect(THREAD_SPAWN_EXPECT_MSG);
+                    .spawn_scoped(scope, move || ref_self.worker_thread(sender))?;
             }
 
-            let on_stop = || {
-                // Ask all other threads to stop
-                self.stop.store(true, Ordering::Relaxed);
+            let mut stdout = io::stdout().lock();
 
-                // Unpark the status displayer thread
-                if let Some(status_displayer) = status_displayer {
-                    status_displayer.thread().unpark();
+            // Receive and process messages from the workers and the ctrl-c handler
+            for message in receiver {
+                match message {
+                    Message::Key(key) => {
+                        let cert = self.key_to_cert(&key)?;
+                        self.serialize_cert(cert, &mut stdout)?;
+
+                        // Increase "found" counter and stop if enough matches have been found
+                        let prev = self.counter_found.fetch_add(1, Ordering::Relaxed);
+                        if self.config.stop_after.is_some_and(|s| prev + 1 == s.get()) {
+                            break;
+                        }
+                    }
+                    Message::Stop => break,
                 }
-            };
+            }
 
-            thread::Builder::new()
-                .name("finalizer".to_string())
-                .spawn_scoped(scope, move || ref_self.finalizer_thread(rx, on_stop))
-                .expect(THREAD_SPAWN_EXPECT_MSG);
-        });
+            // Ask all other threads to stop
+            self.stop.store(true, Ordering::Relaxed);
+
+            // Unpark the status displayer thread, if existant
+            if let Some(status_displayer) = status_displayer {
+                status_displayer.thread().unpark();
+            }
+
+            Ok(())
+        })
     }
 
-    fn worker_thread(&self, matches_tx: mpsc::Sender<SecretKey>) {
+    fn worker_thread(&self, sender: mpsc::Sender<Message>) {
         let mut fingerprint_hex = String::with_capacity(20 * 2);
 
         while !self.stop.load(Ordering::Relaxed) {
@@ -120,8 +143,8 @@ impl Fingerprunk {
             write!(fingerprint_hex, "{:X}", key.fingerprint())
                 .expect("should write into string without error");
             if self.check_fingerprint(&fingerprint_hex) {
-                matches_tx
-                    .send(Key::V4(key))
+                sender
+                    .send(Message::Key(Key::V4(key)))
                     .expect("should be able to send key");
             }
             self.counter_tried.fetch_add(1, Ordering::Relaxed);
@@ -134,27 +157,6 @@ impl Fingerprunk {
             .regex
             .is_match(fingerprint_hex)
             .expect("should check regex without error")
-    }
-
-    fn finalizer_thread(&self, matches_rx: mpsc::Receiver<SecretKey>, on_stop: impl FnOnce()) {
-        let mut stdout = io::stdout().lock();
-
-        for key in matches_rx {
-            let cert = self
-                .key_to_cert(&key)
-                .expect("should be able to create certificate");
-
-            self.serialize_cert(cert, &mut stdout)
-                .expect("should be able to serialize certificate");
-
-            let prev = self.counter_found.fetch_add(1, Ordering::Relaxed);
-
-            if self.config.stop_after.is_some_and(|s| prev + 1 == s.get()) {
-                break;
-            }
-        }
-
-        on_stop();
     }
 
     fn key_to_cert(&self, key: &SecretKey) -> anyhow::Result<Cert> {
