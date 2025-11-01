@@ -72,7 +72,7 @@ impl Fingerprunk {
     pub fn run(mut self) -> anyhow::Result<()> {
         self.started_instant = Instant::now();
 
-        let (sender, receiver) = mpsc::channel();
+        let (sender, receiver) = mpsc::sync_channel(16);
 
         {
             let sender = sender.clone();
@@ -133,7 +133,7 @@ impl Fingerprunk {
         })
     }
 
-    fn worker_thread(&self, sender: mpsc::Sender<Message>) {
+    fn worker_thread(&self, sender: mpsc::SyncSender<Message>) {
         let mut fingerprint_hex = String::with_capacity(20 * 2);
 
         while !self.stop.load(Ordering::Relaxed) {
@@ -143,9 +143,9 @@ impl Fingerprunk {
             write!(fingerprint_hex, "{:X}", key.fingerprint())
                 .expect("should write into string without error");
             if self.check_fingerprint(&fingerprint_hex) {
-                sender
-                    .send(Message::Key(Key::V4(key)))
-                    .expect("should be able to send key");
+                // The channel might already be closed here if we're stopping.
+                // That is fine, so we just ignore the error.
+                let _ = sender.send(Message::Key(Key::V4(key)));
             }
             self.counter_tried.fetch_add(1, Ordering::Relaxed);
         }
