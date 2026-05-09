@@ -9,7 +9,7 @@ use std::{
         mpsc,
     },
     thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 
 use fancy_regex::Regex;
@@ -18,7 +18,7 @@ use sequoia_openpgp::{
     Cert, Packet, armor,
     crypto::Password,
     packet::{
-        Key,
+        Key, UserID,
         key::{Key4, PrimaryRole, SecretParts},
         prelude::SignatureBuilder,
     },
@@ -40,6 +40,7 @@ pub struct Config {
     pub status_enabled: bool,
     pub stop_after: Option<NonZeroU64>,
     pub password: Option<Password>,
+    pub userids: Vec<UserID>,
 }
 
 #[derive(Debug)]
@@ -160,21 +161,19 @@ impl Fingerprunk {
     }
 
     fn key_to_cert(&self, key: &SecretKey) -> anyhow::Result<Cert> {
-        let sig = SignatureBuilder::new(SignatureType::DirectKey)
-            .set_hash_algo(HashAlgorithm::SHA512)
-            .set_preferred_hash_algorithms(vec![HashAlgorithm::SHA512, HashAlgorithm::SHA256])?
-            .set_preferred_symmetric_algorithms(vec![
-                SymmetricAlgorithm::AES256,
-                SymmetricAlgorithm::AES128,
-            ])?;
+        let creation_time = SystemTime::now();
 
         let mut signer = key
             .clone()
             .into_keypair()
             .expect("key should have a secret");
-        let sig = sig.sign_direct_key(&mut signer, key.parts_as_public())?;
 
-        let secret_key_packet = Packet::SecretKey({
+        // Sign keypair
+        let key_sig = create_sig_builder(SignatureType::DirectKey, creation_time)?
+            .sign_direct_key(&mut signer, key.parts_as_public())?;
+
+        // Create certificate
+        let mut cert = Cert::try_from(Packet::SecretKey({
             let mut key = key.clone();
             if let Some(ref password) = self.config.password {
                 let (k, mut secret) = key.take_secret();
@@ -182,9 +181,27 @@ impl Fingerprunk {
                 key = k.add_secret(secret).0;
             }
             key
-        });
+        }))?;
 
-        Cert::try_from(vec![secret_key_packet, Packet::from(sig)])
+        let mut packets = vec![Packet::from(key_sig)];
+
+        // Sign user IDs
+        let mut next_is_primary = true;
+        for user_id in self.config.userids.iter().cloned() {
+            let mut sig_builder =
+                create_sig_builder(SignatureType::PositiveCertification, creation_time)?;
+            if next_is_primary {
+                sig_builder = sig_builder.set_primary_userid(true)?;
+                next_is_primary = false;
+            }
+            let sig = user_id.bind(&mut signer, &cert, sig_builder)?;
+
+            packets.push(user_id.into());
+            packets.push(sig.into());
+        }
+
+        cert = cert.insert_packets(packets)?.0;
+        Ok(cert)
     }
 
     fn serialize_cert(&self, cert: Cert, to: impl io::Write) -> anyhow::Result<()> {
@@ -255,4 +272,18 @@ impl Fingerprunk {
             w = FORMAT_WIDTH
         );
     }
+}
+
+fn create_sig_builder(
+    typ: SignatureType,
+    creation_time: SystemTime,
+) -> Result<SignatureBuilder, anyhow::Error> {
+    SignatureBuilder::new(typ)
+        .set_signature_creation_time(creation_time)?
+        .set_hash_algo(HashAlgorithm::SHA512)
+        .set_preferred_hash_algorithms(vec![HashAlgorithm::SHA512, HashAlgorithm::SHA256])?
+        .set_preferred_symmetric_algorithms(vec![
+            SymmetricAlgorithm::AES256,
+            SymmetricAlgorithm::AES128,
+        ])
 }

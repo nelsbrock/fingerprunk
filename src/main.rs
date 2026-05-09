@@ -7,6 +7,7 @@ use anyhow::{Context as AnyhowContext, anyhow};
 use clap::{ArgAction, Parser, ValueEnum};
 use fancy_regex::Regex;
 use fingerprunk::Fingerprunk;
+use sequoia_openpgp::packet::UserID;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -33,12 +34,22 @@ struct Args {
     #[arg(long)]
     stop_after: Option<NonZeroU64>,
 
-    /// Prompt for a password and use it to encrypt found keys.
+    /// Prompt for a password and use it to encrypt matching keys.
     ///
     /// By default, found keys are printed to stdout unencrypted. Use this if you actually plan to
     /// use generated keys.
     #[arg(short, long, action = ArgAction::SetTrue)]
     password: bool,
+
+    /// Add the given user ID to matching keys.
+    #[arg(short, long = "userid")]
+    userid: Vec<UserID>,
+
+    /// Explicitly do not add user IDs to matching keys.
+    ///
+    /// Disables the warning about importing keys without user IDs into GnuPG.
+    #[arg(long, conflicts_with = "userid", action = ArgAction::SetTrue)]
+    no_userid: bool,
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug, Default)]
@@ -61,6 +72,14 @@ impl StatusEnabled {
 
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
+
+    if !args.no_userid && args.userid.is_empty() {
+        eprintln!(
+            "WARNING: No user ID was provided.\n\
+            You may experience problems importing generated keys into GnuPG.\n\
+            Use the --userid option to add a user ID.\n"
+        )
+    }
 
     let password = if args.password {
         let password = rpassword::prompt_password(
@@ -87,6 +106,7 @@ fn main() -> anyhow::Result<()> {
         status_enabled: args.status.evaluate(),
         stop_after: args.stop_after,
         password,
+        userids: args.userid,
     };
 
     Fingerprunk::new_from_config(config).run()?;

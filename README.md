@@ -18,11 +18,11 @@ at `secret.asc`. The regex for this is `^C0FFEE`. Now, simply use the following 
 the search:
 
 ```sh
-fingerprunk -r '^C0FFEE' >> secret.asc
+fingerprunk -r '^C0FFEE' -u "Your Name <your.email@example.org>" >> secret.asc
 ```
 
 Fingerprunk will now generate many keys and write out all keys with matching fingerprints to
-standard output (here: `secret.asc`).
+standard output (here: `secret.asc`), adding the provided user ID.
 
 If you want Fingerprunk to output password-encrypted keys use the `-p` flag and you will be prompted
 for a password.
