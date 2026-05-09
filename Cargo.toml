@@ -11,10 +11,10 @@ categories = ["command-line-utilities"]
 
 [dependencies]
 anyhow = "1.0.102"
-clap = { version = "4.6.0", features = ["derive"] }
+clap = { version = "4.6.1", features = ["derive"] }
 ctrlc = "3.5.2"
-fancy-regex = "0.17.0"
+fancy-regex = "0.18.0"
 num-integer = "0.1.46"
 num_cpus = "1.17.0"
-rpassword = "7.4.0"
+rpassword = "7.5.2"
 sequoia-openpgp = "2.2.0"
