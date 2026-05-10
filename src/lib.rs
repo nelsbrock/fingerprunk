@@ -84,13 +84,11 @@ impl Fingerprunk {
         }
 
         thread::scope(|scope| {
-            let ref_self = &self;
-
             let status_displayer = if self.config.status_enabled {
                 Some(
                     thread::Builder::new()
                         .name("status_displayer".to_string())
-                        .spawn_scoped(scope, move || ref_self.status_displayer_thread())?,
+                        .spawn_scoped(scope, || self.status_displayer_thread())?,
                 )
             } else {
                 None
@@ -99,7 +97,7 @@ impl Fingerprunk {
             for num in 0..self.config.workers.get() {
                 thread::Builder::new()
                     .name(format!("worker-{num:03}"))
-                    .spawn_scoped(scope, || ref_self.worker_thread(&sender))?;
+                    .spawn_scoped(scope, || self.worker_thread(&sender))?;
             }
 
             let mut stdout = io::stdout().lock();
