@@ -80,6 +80,14 @@ impl StatusEnabled {
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
+    let workers = match args.workers {
+        Some(workers) => workers,
+        None => std::thread::available_parallelism().context(
+            "unable to determine available parallelism, \
+            use `--workers <NUM>` to specify amount of worker threads",
+        )?,
+    };
+
     if !args.no_userid && args.userid.is_empty() {
         eprintln!(
             "WARNING: No user ID was provided.\n\
@@ -106,14 +114,6 @@ fn main() -> anyhow::Result<()> {
         }
     } else {
         None
-    };
-
-    let workers = match args.workers {
-        Some(workers) => workers,
-        None => std::thread::available_parallelism().context(
-            "unable to determine available parallelism, \
-            use `--workers <NUM>` to specify amount of worker threads",
-        )?,
     };
 
     let config = fingerprunk::Config {
