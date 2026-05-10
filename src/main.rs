@@ -100,12 +100,13 @@ fn main() -> anyhow::Result<()> {
         let password = rpassword::prompt_password(
             "Enter password for encrypting found keys (leave empty for no encryption): ",
         )
-        .with_context(|| "Failed to prompt password")?;
+        .context("Failed to prompt password")?;
+
         if password.is_empty() {
             None
         } else {
             let password_retype = rpassword::prompt_password("Retype password: ")
-                .with_context(|| "Failed to prompt password retype")?;
+                .context("Failed to prompt password retype")?;
             if password_retype == password {
                 Some(password.into())
             } else {
