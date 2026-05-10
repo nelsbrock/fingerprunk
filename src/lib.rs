@@ -3,7 +3,7 @@
 use std::{
     fmt::{self, Write},
     io,
-    num::NonZeroU64,
+    num::NonZero,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc,
@@ -38,9 +38,10 @@ enum Message {
 pub struct Config {
     pub regex: Regex,
     pub status_enabled: bool,
-    pub stop_after: Option<NonZeroU64>,
+    pub stop_after: Option<NonZero<u64>>,
     pub password: Option<Password>,
     pub userids: Vec<UserID>,
+    pub workers: NonZero<usize>,
 }
 
 #[derive(Debug)]
@@ -95,7 +96,7 @@ impl Fingerprunk {
                 None
             };
 
-            for num in 0..num_cpus::get() {
+            for num in 0..self.config.workers.get() {
                 let sender = sender.clone();
 
                 thread::Builder::new()

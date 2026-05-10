@@ -1,9 +1,9 @@
 use std::{
     io::{self, IsTerminal},
-    num::NonZeroU64,
+    num::NonZero,
 };
 
-use anyhow::{Context as AnyhowContext, anyhow};
+use anyhow::{Context, anyhow};
 use clap::{ArgAction, Parser, ValueEnum};
 use fancy_regex::Regex;
 use fingerprunk::Fingerprunk;
@@ -32,7 +32,7 @@ struct Args {
 
     /// Stop once the specified number of matching keys has been found.
     #[arg(long)]
-    stop_after: Option<NonZeroU64>,
+    stop_after: Option<NonZero<u64>>,
 
     /// Prompt for a password and use it to encrypt matching keys.
     ///
@@ -50,6 +50,13 @@ struct Args {
     /// Disables the warning about importing keys without user IDs into GnuPG.
     #[arg(long, conflicts_with = "userid", action = ArgAction::SetTrue)]
     no_userid: bool,
+
+    /// Use the specified amount of worker threads.
+    ///
+    /// If not specified, the amount of worker threads will be set to the amount of the machine's
+    /// available parallelism.
+    #[arg(long)]
+    workers: Option<NonZero<usize>>,
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug, Default)]
@@ -101,12 +108,21 @@ fn main() -> anyhow::Result<()> {
         None
     };
 
+    let workers = match args.workers {
+        Some(workers) => workers,
+        None => std::thread::available_parallelism().context(
+            "unable to determine available parallelism, \
+            use --workers to specify amount of worker threads",
+        )?,
+    };
+
     let config = fingerprunk::Config {
         regex: args.regex,
         status_enabled: args.status.evaluate(),
         stop_after: args.stop_after,
         password,
         userids: args.userid,
+        workers,
     };
 
     Fingerprunk::new_from_config(config).run()?;
