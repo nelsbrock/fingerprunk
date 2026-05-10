@@ -93,7 +93,7 @@ fn main() -> anyhow::Result<()> {
             "WARNING: No user ID was provided.\n\
             You may experience problems importing generated keys into GnuPG.\n\
             Use `--userid <USERID>` to add a user ID.\n"
-        )
+        );
     }
 
     let password = if args.password {
@@ -125,7 +125,5 @@ fn main() -> anyhow::Result<()> {
         workers,
     };
 
-    Fingerprunk::new_from_config(config).run()?;
-
-    Ok(())
+    Fingerprunk::new_from_config(config).run()
 }

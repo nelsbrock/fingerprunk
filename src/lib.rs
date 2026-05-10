@@ -97,11 +97,9 @@ impl Fingerprunk {
             };
 
             for num in 0..self.config.workers.get() {
-                let sender = sender.clone();
-
                 thread::Builder::new()
                     .name(format!("worker-{num:03}"))
-                    .spawn_scoped(scope, move || ref_self.worker_thread(sender))?;
+                    .spawn_scoped(scope, || ref_self.worker_thread(&sender))?;
             }
 
             let mut stdout = io::stdout().lock();
@@ -111,7 +109,7 @@ impl Fingerprunk {
                 match message {
                     Message::Key(key) => {
                         let cert = self.key_to_cert(key)?;
-                        self.serialize_cert(cert, &mut stdout)?;
+                        self.serialize_cert(&cert, &mut stdout)?;
 
                         // Increase "found" counter and stop if enough matches have been found
                         let prev = self.counter_found.fetch_add(1, Ordering::Relaxed);
@@ -135,7 +133,7 @@ impl Fingerprunk {
         })
     }
 
-    fn worker_thread(&self, sender: mpsc::SyncSender<Message>) {
+    fn worker_thread(&self, sender: &mpsc::SyncSender<Message>) {
         let mut fingerprint_hex = String::with_capacity(20 * 2);
 
         while !self.stop.load(Ordering::Relaxed) {
@@ -161,7 +159,7 @@ impl Fingerprunk {
             .expect("should check regex without error")
     }
 
-    fn key_to_cert(&self, key: SecretKey) -> anyhow::Result<Cert> {
+    fn key_to_cert(&self, mut key: SecretKey) -> anyhow::Result<Cert> {
         let creation_time = SystemTime::now();
 
         let mut signer = key
@@ -175,7 +173,6 @@ impl Fingerprunk {
 
         // Create certificate
         let mut cert = Cert::try_from(Packet::SecretKey({
-            let mut key = key.clone();
             if let Some(ref password) = self.config.password {
                 let (k, mut secret) = key.take_secret();
                 secret.encrypt_in_place(&k, password)?;
@@ -205,7 +202,7 @@ impl Fingerprunk {
         Ok(cert)
     }
 
-    fn serialize_cert(&self, cert: Cert, to: impl io::Write) -> anyhow::Result<()> {
+    fn serialize_cert(&self, cert: &Cert, to: impl io::Write) -> anyhow::Result<()> {
         let mut comments = cert.armor_headers();
         comments.push(format!(
             "Generated with Fingerprunk. Regex: {}",
