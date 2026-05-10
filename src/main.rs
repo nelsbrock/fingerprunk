@@ -31,7 +31,7 @@ struct Args {
     status: StatusEnabled,
 
     /// Stop once the specified number of matching keys has been found.
-    #[arg(long)]
+    #[arg(long, value_name = "NUM")]
     stop_after: Option<NonZero<u64>>,
 
     /// Prompt for a password and use it to encrypt matching keys.
@@ -55,7 +55,7 @@ struct Args {
     ///
     /// If not specified, the amount of worker threads will be set to the amount of the machine's
     /// available parallelism.
-    #[arg(long)]
+    #[arg(long, value_name = "NUM")]
     workers: Option<NonZero<usize>>,
 }
 
@@ -84,7 +84,7 @@ fn main() -> anyhow::Result<()> {
         eprintln!(
             "WARNING: No user ID was provided.\n\
             You may experience problems importing generated keys into GnuPG.\n\
-            Use the --userid option to add a user ID.\n"
+            Use `--userid <USERID>` to add a user ID.\n"
         )
     }
 
@@ -112,7 +112,7 @@ fn main() -> anyhow::Result<()> {
         Some(workers) => workers,
         None => std::thread::available_parallelism().context(
             "unable to determine available parallelism, \
-            use --workers to specify amount of worker threads",
+            use `--workers <NUM>` to specify amount of worker threads",
         )?,
     };
 
