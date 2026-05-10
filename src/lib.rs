@@ -109,7 +109,7 @@ impl Fingerprunk {
             for message in receiver {
                 match message {
                     Message::Key(key) => {
-                        let cert = self.key_to_cert(&key)?;
+                        let cert = self.key_to_cert(key)?;
                         self.serialize_cert(cert, &mut stdout)?;
 
                         // Increase "found" counter and stop if enough matches have been found
@@ -160,7 +160,7 @@ impl Fingerprunk {
             .expect("should check regex without error")
     }
 
-    fn key_to_cert(&self, key: &SecretKey) -> anyhow::Result<Cert> {
+    fn key_to_cert(&self, key: SecretKey) -> anyhow::Result<Cert> {
         let creation_time = SystemTime::now();
 
         let mut signer = key
