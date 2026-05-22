@@ -38,7 +38,7 @@ enum Message {
 pub struct Config {
     pub regex: Regex,
     pub status_enabled: bool,
-    pub stop_after: Option<NonZero<u64>>,
+    pub count: Option<NonZero<u64>>,
     pub password: Option<Password>,
     pub userids: Vec<UserID>,
     pub workers: NonZero<usize>,
@@ -111,7 +111,7 @@ impl Fingerprunk {
 
                         // Increase "found" counter and stop if enough matches have been found
                         let prev = self.counter_found.fetch_add(1, Ordering::Relaxed);
-                        if self.config.stop_after.is_some_and(|s| prev + 1 == s.get()) {
+                        if self.config.count.is_some_and(|s| prev + 1 == s.get()) {
                             break;
                         }
                     }

@@ -31,8 +31,8 @@ struct Args {
     status: StatusEnabled,
 
     /// Stop once the specified number of matching keys has been found.
-    #[arg(long, value_name = "NUM")]
-    stop_after: Option<NonZero<u64>>,
+    #[arg(short = 'n', long, value_name = "NUM")]
+    count: Option<NonZero<u64>>,
 
     /// Prompt for a password and use it to encrypt matching keys.
     ///
@@ -120,7 +120,7 @@ fn main() -> anyhow::Result<()> {
     let config = fingerprunk::Config {
         regex: args.regex,
         status_enabled: args.status.evaluate(),
-        stop_after: args.stop_after,
+        count: args.count,
         password,
         userids: args.userid,
         workers,
